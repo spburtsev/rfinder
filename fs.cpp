@@ -34,33 +34,28 @@ static std::string find_file_iter(
         std::string dir_to_search = to_visit.front();
         to_visit.pop();
 
-        #ifdef DEBUG
-        printf("DEBUG: searching in directory %s\n", dir_to_search.c_str());
-        #endif
-
         unix_dir_guard directory {opendir(dir_to_search.c_str())};
         if (!directory.dir) {
             continue;
-            // throw std::runtime_error("Could not open directory stream " + dir_to_search + ". " + errno_details());
         }
         
         dirent* dir_entry = 0;
-        do {
+        while (true) {
             dir_entry = readdir(directory.dir);
             if (!dir_entry) {
                 if (errno) {
                     continue;
-                    // throw std::runtime_error("Error reading directory entry " + dir_to_search + ". " + errno_details());
                 }
                 break;
+            }
+            if (dir_entry->d_type == DT_DIR && strcmp(dir_entry->d_name, ".") && strcmp(dir_entry->d_name, "..")) {
+                to_visit.push(dir_to_search + dir_entry->d_name + '/');
+                continue;
             }
             if (!strcmp(dir_entry->d_name, filename.c_str())) {
                 return dir_to_search + filename;
             }
-            if (dir_entry->d_type == DT_DIR && strcmp(dir_entry->d_name, ".") && strcmp(dir_entry->d_name, "..")) {
-                to_visit.push(dir_to_search + dir_entry->d_name + '/');
-            }
-        } while (dir_entry);
+        }
     }
     return "";
 }
@@ -76,7 +71,7 @@ std::string fs::find_file(const proto::file_search_request& req) {
     DIR* directory {opendir(dir_to_search.c_str())};
     if (!directory) {
         if (errno == ENOENT) {
-            throw fs::dir_not_found(dir_to_search);
+            throw proto::root_dir_not_found(dir_to_search);
         }
         throw std::runtime_error("Could not open directory stream " + dir_to_search + ". " + strerror(errno));
     }

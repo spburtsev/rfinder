@@ -16,7 +16,7 @@ int main() {
             return 1;
         }
         printf("File found: %s.\n", filepath.c_str());
-    } catch (const fs::dir_not_found& ex) {
+    } catch (const proto::root_dir_not_found& ex) {
         fprintf(stderr, "Specified root directory not found: %s\n", ex.what());
         return 2;
     } catch (const std::exception& ex) {
