@@ -2,7 +2,6 @@
 #define __PROTOCOL_HPP__
 
 #include <string>
-#include <cstdint>
 
 namespace proto {
 
@@ -12,7 +11,7 @@ struct file_search_request final {
 };
 
 struct file_seach_response final {
-    uint32_t found = 0; 
+    std::string full_path;
 };
 
 } // proto
