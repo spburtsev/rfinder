@@ -7,7 +7,7 @@
 int main() {
     proto::file_search_request req;
     req.filename = "server.cpp";
-    req.root_path = "/home/spburtsev/personal/rfinder/";
+    req.root_path = "/home/spburtsev";
 
     try {
         auto filepath = fs::find_file(req);
@@ -16,8 +16,11 @@ int main() {
             return 1;
         }
         printf("File found: %s.\n", filepath.c_str());
+    } catch (const fs::dir_not_found& ex) {
+        fprintf(stderr, "Specified root directory not found: %s\n", ex.what());
+        return 2;
     } catch (const std::exception& ex) {
-        fprintf(stderr, "Error: %s\n", ex.what());
+        fprintf(stderr, "Unexpected error: %s\n", ex.what());
         return -1;
     }
     return 0;

@@ -1,6 +1,7 @@
+#include <queue>
+#include <cstring>
 #include "fs.hpp"
 #include "protocol.hpp"
-#include <cstring>
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 
@@ -25,7 +26,46 @@ struct unix_dir_guard final {
     }
 };
 
-std::string fs::find_file(const proto::file_search_request &req) {
+static std::string find_file_iter(
+    std::queue<std::string>& to_visit,
+    const std::string& filename
+) {
+    while (!to_visit.empty()) {
+        std::string dir_to_search = to_visit.front();
+        to_visit.pop();
+
+        #ifdef DEBUG
+        printf("DEBUG: searching in directory %s\n", dir_to_search.c_str());
+        #endif
+
+        unix_dir_guard directory {opendir(dir_to_search.c_str())};
+        if (!directory.dir) {
+            continue;
+            // throw std::runtime_error("Could not open directory stream " + dir_to_search + ". " + errno_details());
+        }
+        
+        dirent* dir_entry = 0;
+        do {
+            dir_entry = readdir(directory.dir);
+            if (!dir_entry) {
+                if (errno) {
+                    continue;
+                    // throw std::runtime_error("Error reading directory entry " + dir_to_search + ". " + errno_details());
+                }
+                break;
+            }
+            if (!strcmp(dir_entry->d_name, filename.c_str())) {
+                return dir_to_search + filename;
+            }
+            if (dir_entry->d_type == DT_DIR && strcmp(dir_entry->d_name, ".") && strcmp(dir_entry->d_name, "..")) {
+                to_visit.push(dir_to_search + dir_entry->d_name + '/');
+            }
+        } while (dir_entry);
+    }
+    return "";
+}
+
+std::string fs::find_file(const proto::file_search_request& req) {
     std::string dir_to_search = req.root_path;
     if (dir_to_search.empty()) {
         dir_to_search = "/";
@@ -33,25 +73,18 @@ std::string fs::find_file(const proto::file_search_request &req) {
         dir_to_search += '/';
     }
 
-    unix_dir_guard directory {opendir(dir_to_search.c_str())};
-    if (!directory.dir) {
-        throw fs::dir_not_found(dir_to_search);
-    }
-
-    dirent* dir_entry = 0;
-
-    while (true) {
-        dir_entry = readdir(directory.dir);
-        if (!dir_entry) {
-            // TODO: Include some error details
-            if (errno) throw std::runtime_error("Error while reading the directory entry");
-            break;
+    DIR* directory {opendir(dir_to_search.c_str())};
+    if (!directory) {
+        if (errno == ENOENT) {
+            throw fs::dir_not_found(dir_to_search);
         }
-        if (!strcmp(dir_entry->d_name, req.filename.c_str())) {
-            return dir_to_search + req.filename;
-        }
+        throw std::runtime_error("Could not open directory stream " + dir_to_search + ". " + strerror(errno));
     }
-    return "";
+    closedir(directory);
+
+    std::queue<std::string> to_visit;
+    to_visit.push(dir_to_search);
+    return find_file_iter(to_visit, req.filename);
 }
 
 #else
