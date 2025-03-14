@@ -1,27 +1,21 @@
-#include <exception>
 #include <cstdio>
 
 #include "protocol.hpp"
+#include "networking.hpp"
 #include "threading.hpp"
 
-int main() {
-    proto::file_search_request req;
-    req.filename = "server.cpp";
-    req.root_path = "/";
+static const int DEFAULT_SERVER_PORT = 8080;
+const char* DEFAULT_SERVER_ADDRESS = "127.0.0.1"; //localhost //8.8.8.8
 
-    try {
-        auto filepath = threading::find_file_task(req);
-        if (filepath.empty()) {
-            fprintf(stderr, "File not found.\n");
-            return 1;
-        }
-        printf("File found: %s.\n", filepath.c_str());
-    } catch (const proto::root_dir_not_found& ex) {
-        fprintf(stderr, "Specified root directory not found: %s\n", ex.what());
-        return 2;
-    } catch (const std::exception& ex) {
-        fprintf(stderr, "Unexpected error: %s\n", ex.what());
-        return -1;
+int main(int argc, char** argv) {
+    int port = DEFAULT_SERVER_PORT;
+    if (argc > 1) {
+        char* cmdline_port = argv[1];
+        port = std::atoi(cmdline_port);
     }
+    net::server server;
+    server.address = DEFAULT_SERVER_ADDRESS;
+    server.port = port;
+    net::listen(server);
     return 0;
 }
