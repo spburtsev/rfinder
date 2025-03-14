@@ -33,6 +33,9 @@ static std::string find_file_iter(
     while (!to_visit.empty()) {
         std::string dir_to_search = to_visit.front();
         to_visit.pop();
+        #ifdef DEBUG
+        printf("Searching in %s\n", dir_to_search.c_str());
+        #endif
 
         unix_dir_guard directory {opendir(dir_to_search.c_str())};
         if (!directory.dir) {
@@ -43,8 +46,8 @@ static std::string find_file_iter(
         while (true) {
             dir_entry = readdir(directory.dir);
             if (!dir_entry) {
-                if (errno) {
-                    continue;
+                if (errno && errno != EACCES) {
+                    throw std::runtime_error("Could not read directory stream " + dir_to_search + ". " + strerror(errno));
                 }
                 break;
             }

@@ -16,7 +16,7 @@ fi
 
 OUTPUT_DIR="out"
 OUT="$OUTPUT_DIR/rfinder-server"
-FILES="server.cpp fs.cpp"
+FILES="server.cpp fs.cpp threading.cpp"
 
 echo "Building server..."
 clang++ $CXXFLAGS $FILES -o $OUT

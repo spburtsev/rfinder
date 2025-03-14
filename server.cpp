@@ -2,15 +2,15 @@
 #include <cstdio>
 
 #include "protocol.hpp"
-#include "fs.hpp"
+#include "threading.hpp"
 
 int main() {
     proto::file_search_request req;
     req.filename = "server.cpp";
-    req.root_path = "/home/spburtsev";
+    req.root_path = "/";
 
     try {
-        auto filepath = fs::find_file(req);
+        auto filepath = threading::find_file_task(req);
         if (filepath.empty()) {
             fprintf(stderr, "File not found.\n");
             return 1;
