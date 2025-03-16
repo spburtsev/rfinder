@@ -8,8 +8,8 @@ static void send_response(const proto::file_seach_response& response) {
 }
 
 static void handle_request(const proto::file_search_request& req) {
-    printf("Received request: ID: %s, Filename: %s, Root path: %s\n", 
-        req.id.c_str(), req.filename.c_str(), req.root_path.c_str());
+    printf("Received request: Filename: %s, Root path: %s\n", 
+        req.filename.c_str(), req.root_path.c_str());
 
     proto::file_seach_response response;
     try {
@@ -29,7 +29,7 @@ static void handle_request(const proto::file_search_request& req) {
         response.status = proto::file_search_status::ERROR;
         response.payload = "Internal error";
         send_response(response);
-        fprintf(stderr, "Request ID: %s\nUnhandled error: %s\n", req.id.c_str(), ex.what());
+        fprintf(stderr, "Unhandled error: %s\n", ex.what());
         exit(1);
     }
 }
@@ -55,7 +55,7 @@ static proto::file_search_request unix_receive_request(int server_socket) {
 }
 
 
-static int unix_listen(const net::tcp_server& server) {
+static void unix_listen(const net::tcp_server& server) {
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == -1) {
         throw std::runtime_error("Could not create socket");

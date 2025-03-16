@@ -8,11 +8,10 @@
 namespace proto {
 
     struct file_search_request final {
-        std::string id;
         std::string filename;
         std::string root_path;
 
-        std::vector<char> serialize(const file_search_request& req);
+        std::vector<char> serialize() const;
 
         static file_search_request parse_from_buffer(const char* buffer, size_t size);
     };
