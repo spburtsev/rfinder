@@ -15,8 +15,8 @@ if [ $DEBUG -eq 1 ]; then
 fi
 
 OUTPUT_DIR="out"
-OUT="$OUTPUT_DIR/rfinder-server"
-FILES="server_main.cpp fs.cpp threading.cpp networking.cpp protocol.cpp"
+OUT="$OUTPUT_DIR/rfinder-client"
+FILES="client_main.cpp protocol.cpp"
 
-echo "Building server..."
+echo "Building client..."
 clang++ $CXXFLAGS $FILES -o $OUT
