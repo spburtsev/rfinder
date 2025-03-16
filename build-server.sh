@@ -9,7 +9,7 @@ if [ "$1" == "debug" ]; then
   DEBUG=1
 fi
 
-CXXFLAGS="-O2 -Wall -std=c++17"
+CXXFLAGS="-O2 -Wall -Wextra -Wpedantic -std=c++17"
 if [ $DEBUG -eq 1 ]; then
   CXXFLAGS+=" -g -DDEBUG"
 fi

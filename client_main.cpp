@@ -36,6 +36,7 @@ static std::string read_input(const char* prompt) {
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <unistd.h>
 
 static void unix_send_request(
     const tcp_server_info& server_info,
@@ -46,7 +47,7 @@ static void unix_send_request(
         throw std::runtime_error("Could not create socket");
     }
 
-    sockaddr_in server_address = {0};
+    sockaddr_in server_address;
     server_address.sin_family = AF_INET;
     inet_pton(AF_INET, server_info.address.c_str(), &server_address.sin_addr);
     server_address.sin_port = htons(server_info.port);
@@ -57,8 +58,10 @@ static void unix_send_request(
 
     auto buffer = req.serialize();
     if (send(client_socket, buffer.data(), buffer.size(), 0) == -1) {
+        close(client_socket);
         throw std::runtime_error("Could not send request");
     }
+    close(client_socket);
 }
 
 #else

@@ -2,77 +2,101 @@
 #include "fs.hpp"
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-
-static_assert(false, "Not implemented on Windows yet");
-
+#error "Unsupported platform"
 #elif __unix__
 
 #include <unistd.h>
 
-struct task_completion_handle {
+struct task_handle final {
+    pthread_mutex_t task_mutex;
+    threading::message_callback callback;
     bool completed;
-    pthread_mutex_t mutex;
-};
 
-struct print_processing_args {
-    task_completion_handle* handle;
-    std::chrono::milliseconds interval;
+    inline bool is_completed() {
+        pthread_mutex_t* task_mutex = &this->task_mutex;
+        pthread_mutex_lock(task_mutex);
+        bool result = this->completed;
+        pthread_mutex_unlock(task_mutex);
+        return result;
+    }
+
+    inline void mark_completed() {
+        pthread_mutex_t* task_mutex = &this->task_mutex;
+        pthread_mutex_lock(task_mutex);
+        this->completed = true;
+        pthread_mutex_unlock(task_mutex);
+    }
+
+    inline void use_callback(const proto::file_seach_response& res) {
+        pthread_mutex_t* task_mut = &this->task_mutex;
+        pthread_mutex_lock(task_mut);
+        this->callback(res);
+        pthread_mutex_unlock(task_mut);
+    }
 };
 
 using repeating_routine = void*(*)(void*);
 
-static bool is_completed(task_completion_handle& handle) {
-    pthread_mutex_t* mutex = &handle.mutex;
-    pthread_mutex_lock(mutex);
-    bool result = handle.completed;
-    pthread_mutex_unlock(mutex);
-    return result;
-}
+static void* send_processing_message(void* args) {
+    auto* handle = (task_handle*)args;
+    __useconds_t interval = std::chrono::milliseconds(500).count() * 1000;
 
-static void mark_completed(task_completion_handle& handle) {
-    pthread_mutex_t* mutex = &handle.mutex;
-    pthread_mutex_lock(mutex);
-    handle.completed = true;
-    pthread_mutex_unlock(mutex);
-}
+    #ifdef DEBUG
+    fprintf(stdout, "Interval is %d microseconds\n", interval);
+    #endif
 
-static void* print_processing(void* args) {
-    auto* print_args = (print_processing_args*)args;
+    proto::file_seach_response msg;
+    msg.payload = "Processing...";
+    msg.status = proto::file_search_status::PENDING;
+
     while (true) {
-        if (is_completed(*print_args->handle)) {
+        if (handle->is_completed()) {
             break;
         }
-        std::cout << "Processing..." << std::endl;
-        __useconds_t interval = print_args->interval.count() * 1000;
+        handle->use_callback(msg);
         usleep(interval);
     }
     return 0;
 }
 
-static void print_processing_until_completed(task_completion_handle& handle) {
+static void print_processing_until_completed(task_handle& handle) {
     pthread_t thread;
-    print_processing_args args = { &handle, std::chrono::milliseconds(500) };
-    pthread_create(&thread, 0, print_processing, &args);
+    pthread_create(&thread, 0, send_processing_message, &handle);
 }
 
-std::string threading::find_file_task(const proto::file_search_request& req) {
-    task_completion_handle handle = {0};
-    pthread_mutex_init(&handle.mutex, 0);
+void threading::find_file_task(const proto::file_search_request& req, message_callback callback) {
+    task_handle handle;
+    pthread_mutex_init(&handle.task_mutex, 0);
+    handle.callback = callback;
+    handle.completed = false;
+
     print_processing_until_completed(handle);
 
+    proto::file_seach_response res;
+
     try {
-        std::string result = fs::find_file(req);
-        mark_completed(handle);
-        return result;
-    } catch (...) {
-        mark_completed(handle);
-        throw;
+        std::string filepath = fs::find_file(req);
+        handle.mark_completed();
+        res.status = proto::file_search_status::OK;
+        if (filepath.empty()) {
+            res.payload = "Not found";
+        } else {
+            res.payload = filepath;
+        }
+        handle.use_callback(res);
+    } catch (const proto::root_dir_not_found& ex) {
+        res.status = proto::file_search_status::ERROR;
+        res.payload = std::string(ex.what());
+        handle.use_callback(res);
+    } catch (const std::exception& ex) {
+        res.status = proto::file_search_status::ERROR;
+        res.payload = "Internal error";
+        handle.use_callback(res);
+        throw ex;
     }
 }
 
 #else
-
-static_assert(false, "Unknown platform");
-
+#error "Unsupported platofrm"
 #endif
 
