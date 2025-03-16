@@ -13,9 +13,9 @@ int main(int argc, char** argv) {
         char* cmdline_port = argv[1];
         port = std::atoi(cmdline_port);
     }
-    net::server server;
+    net::tcp_server server;
     server.address = DEFAULT_SERVER_ADDRESS;
     server.port = port;
-    net::listen(server);
+    server.listen();
     return 0;
 }

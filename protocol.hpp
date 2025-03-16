@@ -2,13 +2,19 @@
 #define __PROTOCOL_HPP__
 
 #include <string>
+#include <vector>
 #include <stdexcept>
 
 namespace proto {
 
     struct file_search_request final {
+        std::string id;
         std::string filename;
         std::string root_path;
+
+        std::vector<char> serialize(const file_search_request& req);
+
+        static file_search_request parse_from_buffer(const char* buffer, size_t size);
     };
 
     enum class file_search_status {

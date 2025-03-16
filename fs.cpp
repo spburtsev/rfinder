@@ -5,7 +5,7 @@
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 
-static_assert(false, "Not implemented on Windows yet");
+#error "Not implemented on Windows yet"
 
 #elif __unix__
 

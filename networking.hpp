@@ -5,12 +5,12 @@
 
 namespace net {
 
-    struct server {
+    struct tcp_server final {
         const char* address;
         int port;
-    };
 
-    void listen(const server& server);
+        void listen() const;
+    };
 
 } // net
 
