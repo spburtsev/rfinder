@@ -34,10 +34,6 @@ static std::string find_file_iter(
         std::string dir_to_search = to_visit.front();
         to_visit.pop();
 
-        #ifdef DEBUG
-        // printf("Searching in %s\n", dir_to_search.c_str());
-        #endif
-
         unix_dir_guard directory {opendir(dir_to_search.c_str())};
         if (!directory.dir) {
             continue;

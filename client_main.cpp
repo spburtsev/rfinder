@@ -61,6 +61,27 @@ static void unix_send_request(
         close(client_socket);
         throw std::runtime_error("Could not send request");
     }
+    while (true) {
+        char res_buf[1024] = {0};
+        ssize_t res_bytes = read(client_socket, res_buf, sizeof(res_buf));
+
+        auto res = proto::file_search_response::parse_from_buffer(res_buf, res_bytes);
+        if (res.status == proto::file_search_status::OK) {
+            fprintf(stdout, "File found: \"%s\"\n", res.payload.c_str());
+            break;
+        }
+        if (res.status == proto::file_search_status::ERROR) {
+            fprintf(stdout, "Error: %s\n", res.payload.c_str());
+            break;
+        }
+        if (res.status == proto::file_search_status::PENDING) {
+            fprintf(stdout, "Message: %s\n", res.payload.c_str());
+            continue;
+        }
+        fprintf(stderr, "Response with unexpected status. Payload: %s\n", res.payload.c_str());
+        close(client_socket);
+        return;
+    }
     close(client_socket);
 }
 

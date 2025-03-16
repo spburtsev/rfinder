@@ -31,9 +31,13 @@ namespace proto {
         return "UNKNOWN";
     }
 
-    struct file_seach_response final {
+    struct file_search_response final {
         file_search_status status;
         std::string payload;
+
+        std::vector<char> serialize() const;
+
+        static file_search_response parse_from_buffer(const char* buffer, size_t size);
     };
 
     struct root_dir_not_found final : std::runtime_error {

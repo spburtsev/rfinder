@@ -12,13 +12,20 @@ using namespace std::string_literals;
 #include <netinet/in.h>
 #include <unistd.h>
 
-static void unix_send_response(const proto::file_seach_response& response) {
-    fprintf(stdout, "Response:\n  Status: %s\n  Payload: %s\n\n", 
-        proto::to_string(response.status).c_str(),
-        response.payload.c_str());
+struct unix_request_handle final {
+    proto::file_search_request req;
+    int connection_fd;
+};
+
+static void unix_send_response(
+    const unix_request_handle& handle,
+    const proto::file_search_response& response
+) {
+    auto serialized_res = response.serialize();
+    write(handle.connection_fd, serialized_res.data(), serialized_res.size()); 
 }
 
-static proto::file_search_request unix_receive_request(int server_socket) {
+static unix_request_handle unix_receive_request(int server_socket) {
     int connection = accept(server_socket, 0, 0);
     if (connection == -1) {
         throw std::runtime_error("Could not accept connection");
@@ -28,7 +35,11 @@ static proto::file_search_request unix_receive_request(int server_socket) {
     if (valread == -1) {
         throw std::runtime_error("Could not read from connection");
     }
-    return proto::file_search_request::parse_from_buffer(buffer, valread);
+
+    unix_request_handle handle;
+    handle.connection_fd = connection;
+    handle.req = proto::file_search_request::parse_from_buffer(buffer, valread);
+    return handle;
 }
 
 
@@ -64,11 +75,16 @@ static void unix_listen(const net::tcp_server& server) {
         throw std::runtime_error("Listen failed: "s + strerror(errno));
     } 
     while (true) {
-        auto req = unix_receive_request(server_socket.fd);
+        auto h = unix_receive_request(server_socket.fd);
         fprintf(stdout, "Received request: filename: \"%s\", Root path: \"%s\"\n", 
-            req.filename.c_str(), req.root_path.c_str());
+            h.req.filename.c_str(), h.req.root_path.c_str());
 
-        threading::find_file_task(req, unix_send_response);
+        auto task_callback = [&h](const proto::file_search_response& res) {
+            unix_send_response(h, res);
+        };
+
+        threading::find_file_task(h.req, task_callback);
+        // close(h.fd);
     }
 }
 

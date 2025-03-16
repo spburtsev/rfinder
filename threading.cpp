@@ -27,7 +27,7 @@ struct task_handle final {
         pthread_mutex_unlock(task_mutex);
     }
 
-    inline void use_callback(const proto::file_seach_response& res) {
+    inline void use_callback(const proto::file_search_response& res) {
         pthread_mutex_t* task_mut = &this->task_mutex;
         pthread_mutex_lock(task_mut);
         this->callback(res);
@@ -41,11 +41,7 @@ static void* send_processing_message(void* args) {
     auto* handle = (task_handle*)args;
     __useconds_t interval = std::chrono::milliseconds(500).count() * 1000;
 
-    #ifdef DEBUG
-    fprintf(stdout, "Interval is %d microseconds\n", interval);
-    #endif
-
-    proto::file_seach_response msg;
+    proto::file_search_response msg;
     msg.payload = "Processing...";
     msg.status = proto::file_search_status::PENDING;
 
@@ -72,7 +68,7 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
 
     print_processing_until_completed(handle);
 
-    proto::file_seach_response res;
+    proto::file_search_response res;
 
     try {
         std::string filepath = fs::find_file(req);
