@@ -86,7 +86,7 @@ static void unix_send_request(
 }
 
 #else
-#error "Unsupported platform"
+
 #endif
 
 int main(int argc, char** argv) {
@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
         #ifdef __unix__
         unix_send_request(server_info, req);
         #else 
-        #error "Unsupported platform"
+        
         #endif
     }
 

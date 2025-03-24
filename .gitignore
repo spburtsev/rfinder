@@ -3,3 +3,11 @@ CMakeCache.txt
 /CMakeFiles
 Makefile
 cmake_install.cmake
+
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+/x64
+/*.dir/Debug
+.vs

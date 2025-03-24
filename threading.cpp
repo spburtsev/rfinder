@@ -2,7 +2,7 @@
 #include "fs.hpp"
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-#error "Unsupported platform"
+
 #elif __unix__
 
 #include <unistd.h>

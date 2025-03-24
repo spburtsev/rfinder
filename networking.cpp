@@ -6,7 +6,6 @@
 using namespace std::string_literals;
 
 #ifdef __unix__
-
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -87,7 +86,16 @@ static void unix_listen(const net::tcp_server& server) {
         // close(h.fd);
     }
 }
+#elif defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#include "fs.hpp"
+#include <iostream>
 
+static void windows_listen(const net::tcp_server& server) {
+    proto::file_search_request req;
+    req.filename = "client_main.cpp";
+    auto result = fs::find_file(req);
+    std::cout << result << std::endl;
+}
 #endif
 
 void net::tcp_server::listen() const {
@@ -96,6 +104,6 @@ void net::tcp_server::listen() const {
     #ifdef __unix__
     unix_listen(*this);
     #else
-    #error "Unsupported platform"
+    windows_listen(*this);
     #endif
 }
