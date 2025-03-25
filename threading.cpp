@@ -1,7 +1,109 @@
+#include <cassert>
 #include "threading.hpp"
 #include "fs.hpp"
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#include <windows.h>
+
+using interlocked_flag = volatile LONG;
+
+struct win32_task_handle final {
+    threading::message_callback callback;
+    HANDLE task_mutex;
+    HANDLE messaging_thread_handle;
+    interlocked_flag completed;
+
+    explicit win32_task_handle(threading::message_callback callback) 
+        : callback(callback)
+        , completed(false)
+        , messaging_thread_handle(0) {
+        this->task_mutex = CreateMutexA(NULL, FALSE, NULL);
+        if (!this->task_mutex) {
+            throw std::runtime_error("CreateMutex error: " + std::to_string(GetLastError()));
+        }
+    }
+
+    ~win32_task_handle() {
+        if (this->task_mutex && this->task_mutex != INVALID_HANDLE_VALUE) {
+            CloseHandle(this->task_mutex);
+            this->task_mutex = 0;
+        }
+        if (this->messaging_thread_handle && this->messaging_thread_handle != INVALID_HANDLE_VALUE) {
+            CloseHandle(this->messaging_thread_handle);
+            this->messaging_thread_handle = 0;
+        }
+    }
+
+    bool is_completed() {
+        return _InterlockedOr(&this->completed, 0) != 0;
+    }
+
+    void mark_completed() {
+        _InterlockedExchange(&this->completed, 1);
+    }
+
+    void use_callback(const proto::file_search_response& res) const {
+        this->callback(res);
+    }
+};
+
+using thread_routine = LPTHREAD_START_ROUTINE;
+
+static DWORD WINAPI send_processing_message(LPVOID args) {
+    auto* handle = (win32_task_handle*)args;
+    auto interval = std::chrono::milliseconds(500).count();
+
+    proto::file_search_response msg;
+    msg.payload = "Processing...";
+    msg.status = proto::file_search_status::pending;
+
+    while (true) {
+        if (handle->is_completed()) {
+            break;
+        }
+        handle->use_callback(msg);
+        Sleep(interval);
+    }
+    return 0;
+}
+
+static void print_processing_until_completed(win32_task_handle& handle) {
+    DWORD thread_id;
+    handle.messaging_thread_handle = CreateThread(0, 0, send_processing_message, &handle, 0, &thread_id);
+    if (handle.messaging_thread_handle == 0) {
+        throw std::runtime_error("CreateThread error: " + std::to_string(GetLastError()));
+    }
+}
+
+void threading::find_file_task(const proto::file_search_request& req, message_callback callback) {
+    auto task_handle = win32_task_handle(callback);
+
+    print_processing_until_completed(task_handle);
+
+    proto::file_search_response res;
+    try {
+        std::string filepath = fs::find_file(req);
+        task_handle.mark_completed();
+        res.status = proto::file_search_status::ok;
+        if (filepath.empty()) {
+            res.payload = "Not found";
+        } else {
+            res.payload = filepath;
+        }
+        task_handle.use_callback(res);
+    } catch (const proto::root_dir_not_found& ex) {
+        task_handle.mark_completed();
+        res.status = proto::file_search_status::error;
+        res.payload = std::string(ex.what());
+        task_handle.use_callback(res);
+    } catch (const std::exception& ex) {
+        task_handle.mark_completed();
+        res.status = proto::file_search_status::error;
+        res.payload = "Internal error";
+        task_handle.use_callback(res);
+        throw ex;
+    }
+}
 
 #elif __unix__
 
@@ -43,7 +145,7 @@ static void* send_processing_message(void* args) {
 
     proto::file_search_response msg;
     msg.payload = "Processing...";
-    msg.status = proto::file_search_status::PENDING;
+    msg.status = proto::file_search_status::pending;
 
     while (true) {
         if (handle->is_completed()) {
@@ -73,7 +175,7 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
     try {
         std::string filepath = fs::find_file(req);
         handle.mark_completed();
-        res.status = proto::file_search_status::OK;
+        res.status = proto::file_search_status::ok;
         if (filepath.empty()) {
             res.payload = "Not found";
         } else {
@@ -81,11 +183,11 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
         }
         handle.use_callback(res);
     } catch (const proto::root_dir_not_found& ex) {
-        res.status = proto::file_search_status::ERROR;
+        res.status = proto::file_search_status::error;
         res.payload = std::string(ex.what());
         handle.use_callback(res);
     } catch (const std::exception& ex) {
-        res.status = proto::file_search_status::ERROR;
+        res.status = proto::file_search_status::error;
         res.payload = "Internal error";
         handle.use_callback(res);
         throw ex;

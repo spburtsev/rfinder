@@ -7,9 +7,9 @@
 
 #include <windows.h>
 #include <shlwapi.h>
-#include <string_view>
-
 #pragma comment(lib, "Shlwapi.lib")
+
+#include <string_view>
 
 static std::string win32_get_error() {
     auto err_code = GetLastError();
@@ -26,9 +26,14 @@ static std::string win32_get_error() {
     if (!buf_size) {
         return std::string("Unknown Windows error with code: ") + std::to_string(err_code);
     }
-    std::string out{ buffer };
-    LocalFree(buffer);
-    return out;
+    try {
+        std::string out{ buffer };
+        LocalFree(buffer);
+        return out;
+    } catch (...) {
+        LocalFree(buffer);
+        throw;
+    }
 }
 
 static bool win32_dir_exists(const std::string& dirname) {
@@ -46,7 +51,7 @@ struct win32_find_guard final {
         : handle(h) {}
 
     ~win32_find_guard() {
-        if (this->handle) {
+        if (this->handle && this->handle != INVALID_HANDLE_VALUE) {
             FindClose(this->handle);
             this->handle = 0;
         }
@@ -74,9 +79,11 @@ static std::string win32_find_file_iter(
         auto wildcard = win32_combine_path(dir_to_search, "*");
         auto listing = win32_find_guard(FindFirstFileA(wildcard.c_str(), &data));
         if (listing.handle == INVALID_HANDLE_VALUE) {
+            if (GetLastError() == ERROR_ACCESS_DENIED) {
+                continue;
+            }
             throw std::runtime_error(win32_get_error());
         }
-
         do {
             bool is_dir = data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
             auto name = std::string_view(data.cFileName);
@@ -95,9 +102,8 @@ std::string fs::find_file(const proto::file_search_request& req) {
     if (!root_path.empty() && !win32_dir_exists(root_path)) {
         throw proto::root_dir_not_found(root_path);
     } else {
-        root_path = "C:\\Users\\spbur\\projects";
+        root_path = "C:\\";
     }
-
     std::queue<std::string> to_visit;
     to_visit.push(root_path);
     return win32_find_file_iter(to_visit, req.filename);

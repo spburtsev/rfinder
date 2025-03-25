@@ -17,16 +17,16 @@ namespace proto {
     };
 
     enum class file_search_status {
-        PENDING,
-        OK,
-        ERROR
+        pending,
+        ok,
+        error
     };
 
     inline std::string to_string(file_search_status status) {
         switch (status) {
-            case file_search_status::PENDING: return "PENDING";
-            case file_search_status::OK: return "OK";
-            case file_search_status::ERROR: return "ERROR";
+            case file_search_status::pending: return "PENDING";
+            case file_search_status::ok: return "OK";
+            case file_search_status::error: return "ERROR";
         }
         return "UNKNOWN";
     }

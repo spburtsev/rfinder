@@ -87,14 +87,15 @@ static void unix_listen(const net::tcp_server& server) {
     }
 }
 #elif defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-#include "fs.hpp"
 #include <iostream>
 
 static void windows_listen(const net::tcp_server& server) {
     proto::file_search_request req;
     req.filename = "client_main.cpp";
-    auto result = fs::find_file(req);
-    std::cout << result << std::endl;
+    auto callback = [](const proto::file_search_response& res) {
+        std::cout << "Response: " << proto::to_string(res.status) << " " << res.payload << std::endl;
+    };
+    threading::find_file_task(req, callback);
 }
 #endif
 

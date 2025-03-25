@@ -66,15 +66,15 @@ static void unix_send_request(
         ssize_t res_bytes = read(client_socket, res_buf, sizeof(res_buf));
 
         auto res = proto::file_search_response::parse_from_buffer(res_buf, res_bytes);
-        if (res.status == proto::file_search_status::OK) {
-            fprintf(stdout, "File found: \"%s\"\n", res.payload.c_str());
+        if (res.status == proto::file_search_status::ok) {
+            fprintf(stdout, "Completed with message: \"%s\"\n", res.payload.c_str());
             break;
         }
-        if (res.status == proto::file_search_status::ERROR) {
+        if (res.status == proto::file_search_status::error) {
             fprintf(stdout, "Error: %s\n", res.payload.c_str());
             break;
         }
-        if (res.status == proto::file_search_status::PENDING) {
+        if (res.status == proto::file_search_status::pending) {
             fprintf(stdout, "Message: %s\n", res.payload.c_str());
             continue;
         }
