@@ -1,15 +1,13 @@
 #include <queue>
+#include <string>
 #include <cstring>
 #include "fs.hpp"
-#include "protocol.hpp"
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 
 #include <windows.h>
 #include <shlwapi.h>
 #pragma comment(lib, "Shlwapi.lib")
-
-#include <string_view>
 
 static std::string win32_get_error() {
     auto err_code = GetLastError();
@@ -34,14 +32,6 @@ static std::string win32_get_error() {
         LocalFree(buffer);
         throw;
     }
-}
-
-static bool win32_dir_exists(const std::string& dirname) {
-    auto attrs = GetFileAttributesA(dirname.c_str());
-    if (attrs == INVALID_FILE_ATTRIBUTES) {
-        return false;
-    }
-    return attrs & FILE_ATTRIBUTE_DIRECTORY;
 }
 
 struct win32_find_guard final {
@@ -69,7 +59,7 @@ static std::string win32_combine_path(const std::string& dir, const char* filena
 
 static std::string win32_find_file_iter(
     std::queue<std::string>& to_visit,
-    const std::string& filename
+    std::string_view filename
 ) {
     while (!to_visit.empty()) {
         auto dir_to_search = to_visit.front();
@@ -86,10 +76,10 @@ static std::string win32_find_file_iter(
         }
         do {
             bool is_dir = data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
-            auto name = std::string_view(data.cFileName);
+            const auto name = std::string_view(data.cFileName);
             if (is_dir && name != "." && name != "..") {
                 to_visit.emplace(win32_combine_path(dir_to_search, name.data()));
-            } else if (data.cFileName == filename) {
+            } else if (name == filename) {
                 return win32_combine_path(dir_to_search, name.data());
             }
         } while (FindNextFileA(listing.handle, &data));
@@ -97,21 +87,27 @@ static std::string win32_find_file_iter(
     return "";
 }
 
-std::string fs::find_file(const proto::file_search_request& req) {
-    auto root_path = req.root_path;
-    if (!root_path.empty() && !win32_dir_exists(root_path)) {
-        throw proto::root_dir_not_found(root_path);
-    } else {
-        root_path = "C:\\";
+bool fs::dir_exists(std::string_view absolute_path) noexcept {
+    auto attrs = GetFileAttributesA(absolute_path.data());
+    if (attrs == INVALID_FILE_ATTRIBUTES) {
+        return false;
+    }
+    return attrs & FILE_ATTRIBUTE_DIRECTORY;
+}
+
+std::string fs::find_file(std::string_view filename, std::string_view root) {
+    if (root.empty()) {
+        throw std::runtime_error("Empty root path is not allowed for security and cross-platform compatibility reasons.");
     }
     std::queue<std::string> to_visit;
-    to_visit.push(root_path);
-    return win32_find_file_iter(to_visit, req.filename);
+    to_visit.push(std::string(root));
+    return win32_find_file_iter(to_visit, filename);
 }
 
 #elif __unix__
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <dirent.h>
 #include <cerrno>
 
@@ -130,7 +126,7 @@ struct unix_dir_guard final {
 
 static std::string find_file_iter(
     std::queue<std::string>& to_visit,
-    const std::string& filename
+    std::string_view filename
 ) {
     while (!to_visit.empty()) {
         std::string dir_to_search = to_visit.front();
@@ -154,7 +150,7 @@ static std::string find_file_iter(
                 to_visit.push(dir_to_search + dir_entry->d_name + '/');
                 continue;
             }
-            if (!strcmp(dir_entry->d_name, filename.c_str())) {
+            if (!strcmp(dir_entry->d_name, filename.data())) {
                 return dir_to_search + filename;
             }
         }
@@ -162,26 +158,21 @@ static std::string find_file_iter(
     return "";
 }
 
-std::string fs::find_file(const proto::file_search_request& req) {
-    std::string dir_to_search = req.root_path;
-    if (dir_to_search.empty()) {
-        dir_to_search = "/";
-    } else if (dir_to_search.back() != '/') {
-        dir_to_search += '/';
+bool fs::dir_exists(std::string_view absolute_path) noexcept {
+    struct stat statbuf;
+    if (stat(absolute_path.data(), &statbuf) != 0) {
+        return false;
     }
+    return S_ISDIR(statbuf.st_mode);
+}
 
-    DIR* directory {opendir(dir_to_search.c_str())};
-    if (!directory) {
-        if (errno == ENOENT) {
-            throw proto::root_dir_not_found(dir_to_search);
-        }
-        throw std::runtime_error("Could not open directory stream " + dir_to_search + ". " + strerror(errno));
+std::string fs::find_file(std::string_view filename, std::string_view root) {
+    if (root.empty()) {
+        throw std::runtime_error("Empty root path is not allowed for security and cross-platform compatibility reasons.");
     }
-    closedir(directory);
-
     std::queue<std::string> to_visit;
-    to_visit.push(dir_to_search);
-    return find_file_iter(to_visit, req.filename);
+    to_visit.push(std::string(root));
+    return find_file_iter(to_visit, filename);
 }
 
 #else

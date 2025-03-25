@@ -81,8 +81,18 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
     print_processing_until_completed(task_handle);
 
     proto::file_search_response res;
+    std::string_view root = req.root_path;
     try {
-        std::string filepath = fs::find_file(req);
+        if (root.empty()) {
+            root = "C:\\";
+        } else if (!fs::dir_exists(root)) {
+            task_handle.mark_completed();
+            res.status = proto::file_search_status::error;
+            res.payload = "Invalid root path";
+            task_handle.use_callback(res);
+            return;
+        }
+        std::string filepath = fs::find_file(req.filename, root);
         task_handle.mark_completed();
         res.status = proto::file_search_status::ok;
         if (filepath.empty()) {
@@ -91,17 +101,12 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
             res.payload = filepath;
         }
         task_handle.use_callback(res);
-    } catch (const proto::root_dir_not_found& ex) {
-        task_handle.mark_completed();
-        res.status = proto::file_search_status::error;
-        res.payload = std::string(ex.what());
-        task_handle.use_callback(res);
-    } catch (const std::exception& ex) {
+    } catch (...) {
         task_handle.mark_completed();
         res.status = proto::file_search_status::error;
         res.payload = "Internal error";
         task_handle.use_callback(res);
-        throw ex;
+        throw;
     }
 }
 
@@ -173,6 +178,13 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
     proto::file_search_response res;
 
     try {
+        if (!req.root_path.empty() && !fs::dir_exists(req.root_path)) {
+            handle.mark_completed();
+            res.status = proto::file_search_status::error;
+            res.payload = "Invalid root path";
+            handle.use_callback(res);
+            return;
+        }
         std::string filepath = fs::find_file(req);
         handle.mark_completed();
         res.status = proto::file_search_status::ok;
@@ -182,15 +194,11 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
             res.payload = filepath;
         }
         handle.use_callback(res);
-    } catch (const proto::root_dir_not_found& ex) {
-        res.status = proto::file_search_status::error;
-        res.payload = std::string(ex.what());
-        handle.use_callback(res);
-    } catch (const std::exception& ex) {
+    } catch (...) {
         res.status = proto::file_search_status::error;
         res.payload = "Internal error";
         handle.use_callback(res);
-        throw ex;
+        throw;
     }
 }
 

@@ -89,7 +89,7 @@ static void unix_listen(const net::tcp_server& server) {
 #elif defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 #include <iostream>
 
-static void windows_listen(const net::tcp_server& server) {
+static void win32_listen(const net::tcp_server& server) {
     proto::file_search_request req;
     req.filename = "client_main.cpp";
     auto callback = [](const proto::file_search_response& res) {
@@ -101,10 +101,11 @@ static void windows_listen(const net::tcp_server& server) {
 
 void net::tcp_server::listen() const {
     printf("Listening on %s:%d\n", this->address, this->port);
-
-    #ifdef __unix__
+#ifdef __unix__
     unix_listen(*this);
-    #else
-    windows_listen(*this);
-    #endif
+#elif defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+    win32_listen(*this);
+#else
+#error "Unsupported platform"
+#endif
 }

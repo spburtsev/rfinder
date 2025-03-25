@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdexcept>
 #include "protocol.hpp"
 
 #ifdef __unix__

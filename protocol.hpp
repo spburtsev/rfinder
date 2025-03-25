@@ -3,7 +3,6 @@
 
 #include <string>
 #include <vector>
-#include <stdexcept>
 
 namespace proto {
 
@@ -38,11 +37,6 @@ namespace proto {
         std::vector<char> serialize() const;
 
         static file_search_response parse_from_buffer(const char* buffer, size_t size);
-    };
-
-    struct root_dir_not_found final : std::runtime_error {
-        explicit root_dir_not_found(const std::string& dirname) 
-            : std::runtime_error("Specified root directory does not exist: \"" + dirname + "\"") {}
     };
 
 } // proto

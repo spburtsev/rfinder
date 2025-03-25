@@ -2,16 +2,21 @@
 #define __FS_HPP__
 
 #include <stdexcept>
-#include "protocol.hpp"
+#include <string_view>
 
 namespace fs {
 
 /**
- * Find file and return its full path.
- * @throws proto::root_dir_not_found if root_path does not exist.
+ * Finds a file by its name in a filetree, starting from the specified root and return its full path.
+ * @throws std::runtime exceptions on system errors.
  * @returns empty string if file not found.
  */
-std::string find_file(const proto::file_search_request& req);
+std::string find_file(std::string_view filename, std::string_view root);
+
+/**
+ * Check if specified path is an existing directory
+ */
+bool dir_exists(std::string_view absolute_path) noexcept;
 
 } // fs
 
