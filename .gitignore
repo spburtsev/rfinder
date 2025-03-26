@@ -12,3 +12,4 @@ cmake_install.cmake
 /*.dir/Debug
 .vs
 .vscode
+*.slnLaunch.user

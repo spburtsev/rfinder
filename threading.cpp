@@ -9,7 +9,7 @@ using interlocked_flag = volatile LONG;
 
 struct win32_task_handle final {
     threading::message_callback callback;
-    HANDLE task_mutex;
+    CRITICAL_SECTION callback_section;
     HANDLE messaging_thread_handle;
     interlocked_flag completed;
 
@@ -17,21 +17,15 @@ struct win32_task_handle final {
         : callback(callback)
         , completed(false)
         , messaging_thread_handle(0) {
-        this->task_mutex = CreateMutexA(NULL, FALSE, NULL);
-        if (!this->task_mutex) {
-            throw std::runtime_error("CreateMutex error: " + std::to_string(GetLastError()));
-        }
+        InitializeCriticalSection(&this->callback_section);
     }
 
     ~win32_task_handle() {
-        if (this->task_mutex && this->task_mutex != INVALID_HANDLE_VALUE) {
-            CloseHandle(this->task_mutex);
-            this->task_mutex = 0;
-        }
         if (this->messaging_thread_handle && this->messaging_thread_handle != INVALID_HANDLE_VALUE) {
             CloseHandle(this->messaging_thread_handle);
             this->messaging_thread_handle = 0;
         }
+        DeleteCriticalSection(&this->callback_section);
     }
 
     bool is_completed() {
@@ -42,8 +36,21 @@ struct win32_task_handle final {
         _InterlockedExchange(&this->completed, 1);
     }
 
-    void use_callback(const proto::file_search_response& res) const {
-        this->callback(res);
+    void end_messaging() {
+        this->mark_completed();
+        assert(this->messaging_thread_handle && this->messaging_thread_handle != INVALID_HANDLE_VALUE);
+        WaitForSingleObject(this->messaging_thread_handle, INFINITE);
+    }
+
+    void use_callback(const proto::file_search_response& res) {
+        EnterCriticalSection(&this->callback_section);
+        try {
+            this->callback(res);
+        } catch (...) {
+            LeaveCriticalSection(&this->callback_section);
+            throw;
+        }
+        LeaveCriticalSection(&this->callback_section);
     }
 };
 
@@ -77,23 +84,22 @@ static void print_processing_until_completed(win32_task_handle& handle) {
 
 void threading::find_file_task(const proto::file_search_request& req, message_callback callback) {
     auto task_handle = win32_task_handle(callback);
-
-    print_processing_until_completed(task_handle);
-
     proto::file_search_response res;
-    std::string_view root = req.root_path;
+
     try {
+        print_processing_until_completed(task_handle);
+        std::string_view root = req.root_path;
         if (root.empty()) {
             root = "C:\\";
         } else if (!fs::dir_exists(root)) {
-            task_handle.mark_completed();
+            task_handle.end_messaging();
             res.status = proto::file_search_status::error;
             res.payload = "Invalid root path";
             task_handle.use_callback(res);
             return;
         }
         std::string filepath = fs::find_file(req.filename, root);
-        task_handle.mark_completed();
+        task_handle.end_messaging();
         res.status = proto::file_search_status::ok;
         if (filepath.empty()) {
             res.payload = "Not found";
@@ -102,7 +108,7 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
         }
         task_handle.use_callback(res);
     } catch (...) {
-        task_handle.mark_completed();
+        task_handle.end_messaging();
         res.status = proto::file_search_status::error;
         res.payload = "Internal error";
         task_handle.use_callback(res);
