@@ -1,10 +1,11 @@
 #include <string.h>
+#include <stdexcept>
 #include "protocol.hpp"
 
 #ifdef __unix__
 #include <netinet/in.h>
 #else
-#error "Unsupported platform"
+#include <winsock.h>
 #endif
 
 std::vector<char> proto::file_search_request::serialize() const {

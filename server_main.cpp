@@ -13,9 +13,15 @@ int main(int argc, char** argv) {
         char* cmdline_port = argv[1];
         port = std::atoi(cmdline_port);
     }
-    net::tcp_server server;
-    server.address = DEFAULT_SERVER_ADDRESS;
-    server.port = port;
-    server.listen();
+    try {
+        net::tcp_server server;
+        server.address = DEFAULT_SERVER_ADDRESS;
+        server.port = port;
+        server.listen();
+    } catch (const std::exception& e) {
+        std::cerr << "Fatal error: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "Fatal error of unknown type" << std::endl;
+    }
     return 0;
 }
