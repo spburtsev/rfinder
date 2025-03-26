@@ -1,6 +1,7 @@
 #include <queue>
 #include <string>
 #include <cstring>
+#include <stdexcept>
 #include "fs.hpp"
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
@@ -151,7 +152,7 @@ static std::string find_file_iter(
                 continue;
             }
             if (!strcmp(dir_entry->d_name, filename.data())) {
-                return dir_to_search + filename;
+                return std::string(dir_to_search) + std::string(filename);
             }
         }
     }

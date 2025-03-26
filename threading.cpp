@@ -1,4 +1,5 @@
 #include <cassert>
+#include <chrono>
 #include "threading.hpp"
 #include "fs.hpp"
 
@@ -184,14 +185,17 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
     proto::file_search_response res;
 
     try {
-        if (!req.root_path.empty() && !fs::dir_exists(req.root_path)) {
+        std::string_view root = req.root_path;
+        if (req.root_path.empty()) {
+            root = "/";
+        } else if (!fs::dir_exists(req.root_path)) {
             handle.mark_completed();
             res.status = proto::file_search_status::error;
             res.payload = "Invalid root path";
             handle.use_callback(res);
             return;
         }
-        std::string filepath = fs::find_file(req);
+        std::string filepath = fs::find_file(req.filename, root);
         handle.mark_completed();
         res.status = proto::file_search_status::ok;
         if (filepath.empty()) {

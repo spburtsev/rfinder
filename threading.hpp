@@ -2,8 +2,6 @@
 #define __THREADING_HPP__
 
 #include <functional>
-#include <chrono>
-#include <iostream>
 
 #include "protocol.hpp"
 

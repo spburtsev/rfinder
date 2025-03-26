@@ -1,7 +1,6 @@
 #ifndef __FS_HPP__
 #define __FS_HPP__
 
-#include <stdexcept>
 #include <string_view>
 
 namespace fs {

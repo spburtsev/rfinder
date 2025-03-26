@@ -1,6 +1,7 @@
 #include <string>
 #include <cstring>
 #include <cassert>
+#include <stdexcept>
 #include "networking.hpp"
 #include "threading.hpp"
 
