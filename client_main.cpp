@@ -28,7 +28,6 @@ static std::string read_input(const char* prompt) {
         }
         std::string input_str(input);
         rtrim(input_str, '\n');
-        fprintf(stdout, "Read input: %s\n", input_str.c_str());
         return input_str;
     }
 }
@@ -205,10 +204,8 @@ static void win32_send_request(
 
 int main(int argc, char** argv) {
     tcp_server_info server_info = {};
-    // server_info.address = read_input("Server address: ");
-    // server_info.port = std::stoi(read_input("Server port: "));
-    server_info.address = "127.0.0.1";
-    server_info.port = 8080;
+    server_info.address = read_input("Server address: ");
+    server_info.port = std::stoi(read_input("Server port: "));
     
     fputs("**********\n", stdout);
     fprintf(stdout, "Server address: %s\nServer port: %d\n", server_info.address.c_str(), server_info.port);
@@ -222,19 +219,22 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (input.empty()) {
-            fputs("Filename cannot be empty\n", stderr);
+            fputs("Filename cannot be empty\n", stdout);
             continue;
         }
         req.filename = input;
 
         input = read_input("Root path (optional): ");
         req.root_path = input;
-
+        try {
 #ifdef __unix__
-        unix_send_request(server_info, req);
+            unix_send_request(server_info, req);
 #else 
-        win32_send_request(server_info, req);
+            win32_send_request(server_info, req);
 #endif
+        } catch (const std::exception& e) {
+            fprintf(stderr, "Error while sending request: %s\n", e.what());
+        }
     }
 
     return 0;
