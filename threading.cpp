@@ -11,23 +11,20 @@ using interlocked_flag = volatile LONG;
 
 struct win32_task_handle final {
     threading::message_callback callback;
-    CRITICAL_SECTION callback_section;
     HANDLE messaging_thread_handle;
     interlocked_flag completed;
 
     explicit win32_task_handle(threading::message_callback callback) 
         : callback(callback)
         , completed(false)
-        , messaging_thread_handle(0) {
-        InitializeCriticalSection(&this->callback_section);
-    }
+        , messaging_thread_handle(0) {}
 
     ~win32_task_handle() {
         if (this->messaging_thread_handle && this->messaging_thread_handle != INVALID_HANDLE_VALUE) {
+            this->end_messaging();
             CloseHandle(this->messaging_thread_handle);
             this->messaging_thread_handle = 0;
         }
-        DeleteCriticalSection(&this->callback_section);
     }
 
     bool is_completed() {
@@ -42,17 +39,6 @@ struct win32_task_handle final {
         this->mark_completed();
         assert(this->messaging_thread_handle && this->messaging_thread_handle != INVALID_HANDLE_VALUE);
         WaitForSingleObject(this->messaging_thread_handle, INFINITE);
-    }
-
-    void use_callback(const proto::file_search_response& res) {
-        EnterCriticalSection(&this->callback_section);
-        try {
-            this->callback(res);
-        } catch (...) {
-            LeaveCriticalSection(&this->callback_section);
-            throw;
-        }
-        LeaveCriticalSection(&this->callback_section);
     }
 };
 
@@ -70,7 +56,7 @@ static DWORD WINAPI send_processing_message(LPVOID args) {
         if (handle->is_completed()) {
             break;
         }
-        handle->use_callback(msg);
+        handle->callback(msg);
         Sleep(interval);
     }
     return 0;
@@ -97,7 +83,7 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
             unix_task_handle.end_messaging();
             res.status = proto::file_search_status::error;
             res.payload = "Invalid root path";
-            unix_task_handle.use_callback(res);
+            unix_task_handle.callback(res);
             return;
         }
         std::string filepath = fs::find_file(req.filename, root);
@@ -108,12 +94,12 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
         } else {
             res.payload = filepath;
         }
-        unix_task_handle.use_callback(res);
+        unix_task_handle.callback(res);
     } catch (...) {
         unix_task_handle.end_messaging();
         res.status = proto::file_search_status::error;
         res.payload = "Internal error";
-        unix_task_handle.use_callback(res);
+        unix_task_handle.callback(res);
         throw;
     }
 }

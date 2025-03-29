@@ -276,10 +276,9 @@ struct win32_client_state final {
 };
 
 static void win32_send_request(
-    const tcp_server_info& server_info,
-    const proto::file_search_request& req
+    const command_options& opts
 ) {
-    win32_client_state cstate(server_info);
+    win32_client_state cstate(opts.server_info);
     for (addrinfo* addr = cstate.server_info; addr != 0; addr = addr->ai_next) {
         cstate.client_socket = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
         if (cstate.client_socket == INVALID_SOCKET) {
@@ -299,7 +298,9 @@ static void win32_send_request(
     if (cstate.client_socket == INVALID_SOCKET) {
         throw std::runtime_error("Unable to connect to server!");
     }
-
+    proto::file_search_request req;
+    req.filename = opts.file_name;
+    req.root_path = opts.root_path;
     auto payload = req.serialize();
     auto socket_ret = send(cstate.client_socket, payload.data(), (int)payload.size(), 0);
     if (socket_ret == SOCKET_ERROR) {
@@ -364,7 +365,7 @@ int main(int argc, char** argv) {
 #ifdef __unix__
         unix_send_request(opts);
 #else 
-        win32_send_request(server_info, req);
+        win32_send_request(opts);
 #endif
     } catch (const std::exception& e) {
         fprintf(stderr, "Error while processing request: %s\n", e.what());
