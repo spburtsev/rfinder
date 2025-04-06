@@ -117,11 +117,17 @@ static void unix_listen(const net::tcp_server& server) {
 }
 
 #elif defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-#include <iostream>
-#include <cstdio>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment (lib, "Ws2_32.lib")
+
+static void win32_send_response(
+    const threading::win32_task_handle* handle,
+    const proto::file_search_response& response
+) {
+    auto serialized_res = response.serialize();
+    auto sent = send(handle->connection_socket, serialized_res.data(), serialized_res.size(), 0);
+    if (sent == SOCKET_ERROR) {
+        throw std::runtime_error("send failed with error: " + std::to_string(WSAGetLastError()));
+    }
+}
 
 struct win32_server_state final {
     addrinfo* obtained_addrinfo = 0;
@@ -149,31 +155,23 @@ struct win32_server_state final {
         char recvbuf[1024];
         constexpr int recvbuflen = sizeof(recvbuf);
         int bytes_recv = 0;
-        do {
-            ZeroMemory(recvbuf, sizeof(recvbuf));
-            bytes_recv = recv(client_socket, recvbuf, recvbuflen, 0);
-            if (bytes_recv > 0) {
-                auto req = proto::file_search_request::parse_from_buffer(recvbuf, bytes_recv);
-
-                auto callback = [client_socket](const proto::file_search_response& res) {
-                    assert(client_socket != INVALID_SOCKET);
-                    auto serialized_res = res.serialize();
-                    auto sent = send(client_socket, serialized_res.data(), serialized_res.size(), 0);
-                    if (sent == SOCKET_ERROR) {
-                        throw std::runtime_error("send_error");
-                    }
-                };
-                threading::find_file_task(req, callback);
-            } else if (bytes_recv == 0) {
-                printf("Connection closing...\n");
-            } else  {
-                throw this->err("recv");
-            }
-        } while (bytes_recv > 0);
-        // shutdown the connection since we're done
-        auto sd_result = shutdown(client_socket, SD_SEND);
-        if (sd_result == SOCKET_ERROR) {
-            throw this->err("shutdown");
+        ZeroMemory(recvbuf, sizeof(recvbuf));
+        bytes_recv = recv(client_socket, recvbuf, recvbuflen, 0);
+        if (bytes_recv > 0) {
+            auto req = proto::file_search_request::parse_from_buffer(recvbuf, bytes_recv);
+            fprintf(stdout, "Received request: filename: \"%s\", Root path: \"%s\"\n", 
+                    req.filename.c_str(), req.root_path.c_str());
+            auto task_handle = std::make_unique<threading::win32_task_handle>();
+            task_handle->req = std::move(req);
+            task_handle->callback = win32_send_response;
+            task_handle->connection_socket = client_socket;
+            task_handle->messaging_thread_handle = 0;
+            task_handle->completed = 0;
+            threading::find_file_task(std::move(task_handle));
+        } else if (bytes_recv == 0) {
+            printf("Connection closing...\n");
+        } else  {
+            throw this->err("recv");
         }
     }
 };
@@ -220,7 +218,6 @@ static void win32_listen(const net::tcp_server& server) {
             throw sstate.err("accept");
         }
         sstate.proccess_request(client_socket);
-        closesocket(client_socket);
     }
 }
 #endif

@@ -53,8 +53,47 @@ namespace threading {
 } // threading
 
 #elif defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment (lib, "Ws2_32.lib")
+
 namespace threading {
-    void find_file_task(const proto::file_search_request& req, const message_callback& callback);
+
+    struct win32_task_handle final {
+        proto::file_search_request req;
+        std::function<void(const win32_task_handle*, const proto::file_search_response&)> callback;
+        SOCKET connection_socket;
+        HANDLE messaging_thread_handle;
+        volatile LONG completed;
+
+        ~win32_task_handle() {
+            if (this->messaging_thread_handle && this->messaging_thread_handle != INVALID_HANDLE_VALUE) {
+                this->end_messaging();
+                CloseHandle(this->messaging_thread_handle);
+                this->messaging_thread_handle = 0;
+            }
+            shutdown(this->connection_socket, SD_SEND);
+            closesocket(this->connection_socket);
+            this->connection_socket = INVALID_SOCKET;
+        }
+
+        bool is_completed() {
+            return _InterlockedOr(&this->completed, 0) != 0;
+        }
+
+        void mark_completed() {
+            _InterlockedExchange(&this->completed, 1);
+        }
+
+        void end_messaging() {
+            this->mark_completed();
+            assert(this->messaging_thread_handle && this->messaging_thread_handle != INVALID_HANDLE_VALUE);
+            WaitForSingleObject(this->messaging_thread_handle, INFINITE);
+        }
+    };
+
+    void find_file_task(std::unique_ptr<win32_task_handle> handle);
+
 } // threading
 #endif
 
