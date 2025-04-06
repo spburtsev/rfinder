@@ -142,9 +142,6 @@ static std::string find_file_iter(
         while (true) {
             dir_entry = readdir(directory.dir);
             if (!dir_entry) {
-                if (errno && errno != EACCES) {
-                    throw std::runtime_error("Could not read directory stream " + dir_to_search + ". " + strerror(errno));
-                }
                 break;
             }
             if (dir_entry->d_type == DT_DIR && strcmp(dir_entry->d_name, ".") && strcmp(dir_entry->d_name, "..")) {

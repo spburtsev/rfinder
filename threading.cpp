@@ -108,38 +108,10 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
 
 #include <unistd.h>
 
-struct unix_task_handle final {
-    threading::message_callback callback;
-    pthread_t messaging_thread;
-    volatile int completed;
-
-    bool is_completed() {
-        return __atomic_load_n(&this->completed, __ATOMIC_ACQUIRE);
-    }
-
-    void end_messaging() {
-        __atomic_store_n(&this->completed, 1, __ATOMIC_RELEASE);
-        pthread_join(this->messaging_thread, 0);
-        this->messaging_thread = 0;
-    }
-
-    void end_messaging(const proto::file_search_response& final_response) {
-        this->end_messaging();
-        this->callback(final_response);
-    }
-
-    ~unix_task_handle() {
-        assert(!this->messaging_thread);
-        if (this->messaging_thread) {
-            this->end_messaging();
-        }
-    }
-};
-
 using repeating_routine = void*(*)(void*);
 
 static void* send_processing_message(void* args) {
-    auto* handle = (unix_task_handle*)args;
+    auto* handle = (threading::unix_task_handle*)args;
     __useconds_t interval = std::chrono::milliseconds(500).count() * 1000;
 
     proto::file_search_response msg;
@@ -150,13 +122,13 @@ static void* send_processing_message(void* args) {
         if (handle->is_completed()) {
             break;
         }
-        handle->callback(msg);
+        handle->callback(handle, msg);
         usleep(interval);
     }
     return 0;
 }
 
-static pthread_t print_processing_until_completed(unix_task_handle& handle) {
+static pthread_t print_processing_until_completed(threading::unix_task_handle& handle) {
     pthread_t thread;
     pthread_create(&thread, 0, send_processing_message, &handle);
     if (thread == 0) {
@@ -165,22 +137,23 @@ static pthread_t print_processing_until_completed(unix_task_handle& handle) {
     return thread;
 }
 
-void threading::find_file_task(const proto::file_search_request& req, message_callback callback) {
-    proto::file_search_response res;
+static void* search_file(void* args) {
+    std::unique_ptr<threading::unix_task_handle> handle((threading::unix_task_handle*)args);
+    handle->completed = 0;
 
-    unix_task_handle handle;
-    handle.callback = callback;
-    handle.completed = 0;
+    proto::file_search_response res;
+    auto& req = handle->req;
+
     try {
-        handle.messaging_thread = print_processing_until_completed(handle);
+        handle->messaging_thread = print_processing_until_completed(*handle);
         std::string_view root = req.root_path;
         if (req.root_path.empty()) {
             root = "/";
         } else if (!fs::dir_exists(req.root_path)) {
             res.status = proto::file_search_status::error;
             res.payload = "Invalid root path";
-            handle.end_messaging(res);
-            return;
+            handle->end_messaging(res);
+            return 0;
         }
         std::string filepath = fs::find_file(req.filename, root);
         res.status = proto::file_search_status::ok;
@@ -189,13 +162,26 @@ void threading::find_file_task(const proto::file_search_request& req, message_ca
         } else {
             res.payload = filepath;
         }
-        handle.end_messaging(res);
+        handle->end_messaging(res);
     } catch (...) {
         res.status = proto::file_search_status::error;
         res.payload = "Internal error";
-        handle.end_messaging(res);
+        handle->end_messaging(res);
+        // TODO: find out what really happens when throwing from a detached thread
+        // pthread_exit(0);
         throw;
     }
+    return 0;
+}
+
+void threading::find_file_task(std::unique_ptr<unix_task_handle> handle) {
+    pthread_t thread;
+    pthread_create(&thread, 0, search_file, handle.get());
+    if (thread == 0) {
+        throw std::runtime_error("pthread_create error");
+    } 
+    handle.release();
+    pthread_detach(thread);
 }
 
 #else

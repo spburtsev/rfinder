@@ -19,26 +19,23 @@ struct unix_request_handle final {
 };
 
 static void unix_send_response(
-    const unix_request_handle& handle,
+    int conn_fd,
     const proto::file_search_response& response
 ) {
     auto serialized_res = response.serialize();
-    write(handle.connection_fd, serialized_res.data(), serialized_res.size()); 
+    write(conn_fd, serialized_res.data(), serialized_res.size()); 
 }
 
-static unix_request_handle unix_receive_request(int server_socket) {
-    int connection = accept(server_socket, 0, 0);
-    if (connection == -1) {
-        throw std::runtime_error("Could not accept connection");
-    }
+static unix_request_handle unix_process_accepted(int connection_fd) {
+    assert(connection_fd != -1);    
     char buffer[1024] = {0};
-    int valread = read(connection, buffer, sizeof(buffer));
+    int valread = read(connection_fd, buffer, sizeof(buffer));
     if (valread == -1) {
         throw std::runtime_error("Could not read from connection");
     }
 
     unix_request_handle handle;
-    handle.connection_fd = connection;
+    handle.connection_fd = connection_fd;
     handle.req = proto::file_search_request::parse_from_buffer(buffer, valread);
     return handle;
 }
@@ -61,6 +58,14 @@ struct socket_guard final {
     }
 };
 
+static void unix_callback(
+    const void* task_handle,
+    const proto::file_search_response& res
+) {
+    const auto* handle = (threading::unix_task_handle*)task_handle;
+    unix_send_response(handle->connection_fd, res);
+}
+
 static void unix_listen(const net::tcp_server& server) {
     socket_guard server_socket;
 
@@ -72,22 +77,54 @@ static void unix_listen(const net::tcp_server& server) {
     if (bind(server_socket.fd, (sockaddr*)&server_address, sizeof(server_address)) == -1) {
         throw std::runtime_error("Could not bind socket: "s + strerror(errno));
     }
-    if ((listen(server_socket.fd, 5)) != 0) { 
+    if (listen(server_socket.fd, 5) != 0) { 
         throw std::runtime_error("Listen failed: "s + strerror(errno));
     } 
+    fd_set read_descriptors;
+    int max_fd = server_socket.fd;
+
     while (true) {
-        auto h = unix_receive_request(server_socket.fd);
-        fprintf(stdout, "Received request: filename: \"%s\", Root path: \"%s\"\n", 
-            h.req.filename.c_str(), h.req.root_path.c_str());
+        FD_ZERO(&read_descriptors);
+        FD_SET(server_socket.fd, &read_descriptors);
 
-        auto task_callback = [&h](const proto::file_search_response& res) {
-            unix_send_response(h, res);
-        };
+        timeval timeout;
+        timeout.tv_sec = 5;
+        timeout.tv_usec = 0;
 
-        threading::find_file_task(h.req, task_callback);
-        // close(h.fd);
+        int ready_fds = select(max_fd + 1, &read_descriptors, 0, 0, &timeout);
+
+        if (ready_fds == -1) {
+            throw std::runtime_error("Select failed: "s + strerror(errno));
+        }
+        if (ready_fds == 0) {
+            continue;
+        }
+
+        if (FD_ISSET(server_socket.fd, &read_descriptors)) {
+            sockaddr_in client_address;
+            socklen_t client_address_size = sizeof(client_address);
+            int client_socket = accept(
+                server_socket.fd, 
+                (sockaddr*)&client_address,
+                &client_address_size
+            );
+            if (client_socket == -1) {
+                throw std::runtime_error("Accept failed: "s + strerror(errno));
+            } 
+            auto h = unix_process_accepted(client_socket);
+            fprintf(stdout, "Received request: filename: \"%s\", Root path: \"%s\"\n", 
+                    h.req.filename.c_str(), h.req.root_path.c_str());
+
+            auto task_handle = std::make_unique<threading::unix_task_handle>();
+            task_handle->req = std::move(h.req);
+            task_handle->callback = unix_callback;
+            task_handle->connection_fd = client_socket;
+            threading::find_file_task(std::move(task_handle));
+            max_fd = std::max(max_fd, client_socket);
+        }
     }
 }
+
 #elif defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 #include <iostream>
 #include <cstdio>
