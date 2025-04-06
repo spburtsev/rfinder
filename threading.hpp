@@ -16,7 +16,6 @@ namespace threading {
         const proto::file_search_response& response
     )>;
 
-
     struct unix_task_handle final {
         proto::file_search_request req;
         message_callback callback;
@@ -40,7 +39,6 @@ namespace threading {
         }
 
         ~unix_task_handle() {
-            assert(!this->messaging_thread);
             if (this->messaging_thread) {
                 this->end_messaging();
             }

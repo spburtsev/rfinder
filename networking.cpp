@@ -13,11 +13,6 @@ using namespace std::string_literals;
 #include <netinet/in.h>
 #include <unistd.h>
 
-struct unix_request_handle final {
-    proto::file_search_request req;
-    int connection_fd;
-};
-
 static void unix_send_response(
     int conn_fd,
     const proto::file_search_response& response
@@ -26,18 +21,14 @@ static void unix_send_response(
     write(conn_fd, serialized_res.data(), serialized_res.size()); 
 }
 
-static unix_request_handle unix_process_accepted(int connection_fd) {
+static proto::file_search_request unix_process_accepted(int connection_fd) {
     assert(connection_fd != -1);    
     char buffer[1024] = {0};
     int valread = read(connection_fd, buffer, sizeof(buffer));
     if (valread == -1) {
         throw std::runtime_error("Could not read from connection");
     }
-
-    unix_request_handle handle;
-    handle.connection_fd = connection_fd;
-    handle.req = proto::file_search_request::parse_from_buffer(buffer, valread);
-    return handle;
+    return proto::file_search_request::parse_from_buffer(buffer, valread);
 }
 
 
@@ -111,12 +102,12 @@ static void unix_listen(const net::tcp_server& server) {
             if (client_socket == -1) {
                 throw std::runtime_error("Accept failed: "s + strerror(errno));
             } 
-            auto h = unix_process_accepted(client_socket);
+            auto req = unix_process_accepted(client_socket);
             fprintf(stdout, "Received request: filename: \"%s\", Root path: \"%s\"\n", 
-                    h.req.filename.c_str(), h.req.root_path.c_str());
+                    req.filename.c_str(), req.root_path.c_str());
 
             auto task_handle = std::make_unique<threading::unix_task_handle>();
-            task_handle->req = std::move(h.req);
+            task_handle->req = std::move(req);
             task_handle->callback = unix_callback;
             task_handle->connection_fd = client_socket;
             threading::find_file_task(std::move(task_handle));
